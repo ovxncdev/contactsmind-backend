@@ -560,6 +560,84 @@ Now extract from the text. Return ONLY JSON, no explanation:`
   }
 });
 
+
+// =============================================
+// AI SEARCH ROUTE
+// =============================================
+
+app.post('/api/contacts/search-ai', authenticateToken, async (req, res) => {
+  console.log('🔍 AI Search endpoint hit!');
+  try {
+    const { query, contacts } = req.body;
+    
+    if (!query || !contacts) {
+      return res.status(400).json({ error: 'Query and contacts required' });
+    }
+
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ error: 'API key not configured' });
+    }
+
+    // Build contacts summary for AI
+    const contactsSummary = contacts.map(c => ({
+      name: c.name,
+      skills: c.skills || [],
+      phone: c.phone,
+      email: c.email,
+      paymentMethods: (c.paymentMethods || []).map(p => p.type + (p.username ? `: ${p.username}` : '')),
+      debts: (c.debts || []).map(d => `${d.direction === 'i_owe_them' ? 'I owe them' : 'They owe me'} $${d.amount}`),
+      notes: (c.notes || []).map(n => typeof n === 'string' ? n : n.text)
+    }));
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1024,
+        messages: [{
+          role: 'user',
+          content: `You are a helpful contact search assistant. Search through the user's contacts and answer their question.
+
+CONTACTS DATABASE:
+${JSON.stringify(contactsSummary, null, 2)}
+
+USER QUESTION: "${query}"
+
+RULES:
+1. Search the contacts and find relevant matches
+2. Be conversational and friendly
+3. Format names in UPPERCASE
+4. If asking about debts, calculate totals
+5. If asking about payment methods, list who has what
+6. If no matches found, say so politely
+7. Keep response concise but informative
+
+Respond naturally as if chatting with the user:`
+        }]
+      })
+    });
+
+    const data = await response.json();
+    
+    if (data.content && data.content[0]) {
+      console.log('✅ AI Search response generated');
+      res.json({ response: data.content[0].text });
+    } else {
+      res.json({ response: "I couldn't search right now. Try again!" });
+    }
+  } catch (error) {
+    console.error('❌ AI Search error:', error);
+    res.json({ response: "Search failed. Please try again." });
+  }
+});
+
+
 // =============================================
 // START SERVER
 // =============================================
