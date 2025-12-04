@@ -8,7 +8,9 @@ const bcrypt = require('bcrypt');
 require('dotenv').config();
 const Contact = require('./models/Contact');
 const app = express();
-
+console.log('🔍 All ANTHROPIC vars:', Object.keys(process.env).filter(k => k.toUpperCase().includes('ANTHROPIC')));
+console.log('🔍 Full env var names:', Object.keys(process.env).join(', '));
+console.log('🔍 All env keys:', Object.keys(process.env));
 // Middleware
 app.use(cors());
 app.use(express.json());
