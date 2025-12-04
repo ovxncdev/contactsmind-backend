@@ -393,6 +393,7 @@ app.get('/api/admin/stats', authenticateToken, async (req, res) => {
 // =============================================
 
 app.post('/api/contacts/parse-ai', authenticateToken, async (req, res) => {
+  console.log('🚀 AI Parse endpoint hit!');
   try {
     const { text } = req.body;
     console.log('📥 AI Parse request:', text); // logging response
@@ -400,7 +401,18 @@ app.post('/api/contacts/parse-ai', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Text required' });
     }
 
+    // Check if API key exists
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    console.log('🔑 API Key exists:', !!apiKey);
+    console.log('🔑 API Key starts with:', apiKey ? apiKey.substring(0, 10) + '...' : 'MISSING');
+
+    if (!apiKey) {
+      console.error('❌ ANTHROPIC_API_KEY is not set!');
+      return res.json({ contacts: [], error: 'API key not configured' });
+    }
+
     // Call Claude API
+    console.log('📡 Calling Claude API...');
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -445,6 +457,17 @@ Now extract from the text. Return ONLY JSON, no explanation:`
       // Parse the JSON response
       const parsed = JSON.parse(jsonText);
       
+     // Clean the response (remove markdown if present)
+      let cleanJson = jsonText.trim();
+      if (cleanJson.startsWith('```json')) {
+        cleanJson = cleanJson.replace(/```json\n?/, '').replace(/\n?```$/, '');
+      }
+      if (cleanJson.startsWith('```')) {
+        cleanJson = cleanJson.replace(/```\n?/, '').replace(/\n?```$/, '');
+      }
+      
+      console.log('🧹 Cleaned JSON:', cleanJson);
+
       // Add required fields
       parsed.contacts = parsed.contacts.map((contact, index) => ({
         ...contact,
@@ -457,13 +480,14 @@ Now extract from the text. Return ONLY JSON, no explanation:`
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       }));
-      
+      console.log('✅ Returning contacts:', parsed.contacts);
       res.json(parsed);
     } else {
       res.json({ contacts: [] });
     }
   } catch (error) {
-    console.error('AI parsing error:', error);
+    console.error('❌ AI parsing error:', error.message);
+    console.error('❌ Full error:', error);
     res.json({ contacts: [] }); // Fallback to empty on error
   }
 });
