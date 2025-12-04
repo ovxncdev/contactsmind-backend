@@ -486,7 +486,11 @@ Now extract from the text. Return ONLY JSON, no explanation:`
         ...contact,
         id: `ai-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 9)}`,
         skills: contact.skills || [],
-        notes: contact.notes || [],
+        notes: (contact.notes || []).map(note => 
+          typeof note === 'string' 
+            ? { text: note, date: new Date().toISOString() }
+            : note
+        ),
         debts: contact.debts || [],
         reminders: contact.reminders || [],
         metadata: {},
