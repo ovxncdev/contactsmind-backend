@@ -1,5 +1,4 @@
 // server.js - ContactMind Backend API
-//u[]
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -8,9 +7,10 @@ const bcrypt = require('bcrypt');
 require('dotenv').config();
 const Contact = require('./models/Contact');
 const app = express();
+
 console.log('🔍 All ANTHROPIC vars:', Object.keys(process.env).filter(k => k.toUpperCase().includes('ANTHROPIC')));
 console.log('🔍 Full env var names:', Object.keys(process.env).join(', '));
-console.log('🔍 All env keys:', Object.keys(process.env));
+
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -41,7 +41,6 @@ const userSchema = new mongoose.Schema({
 
 const User = mongoose.model('User', userSchema);
 
-// Contact Schema
 // Analytics Event Schema
 const eventSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -207,7 +206,7 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
 // CONTACT ROUTES
 // =============================================
 
-// Sync contacts (bidirectional)
+// Sync contacts (bidirectional with smart duplicate handling)
 app.post('/api/contacts/sync', authenticateToken, async (req, res) => {
   try {
     const { contacts } = req.body;
@@ -252,9 +251,55 @@ app.post('/api/contacts/sync', authenticateToken, async (req, res) => {
       }
     }
 
-    // Batch create
+    // Batch create (with duplicate name check and smart merge)
+    let createdCount = 0;
+    let mergedCount = 0;
+    
     if (toCreate.length > 0) {
-      await Contact.insertMany(toCreate);
+      for (const contact of toCreate) {
+        // Check if contact with same name already exists
+        const existingByName = await Contact.findOne({ 
+          userId: req.userId, 
+          name: contact.name.toLowerCase() 
+        });
+        
+        if (existingByName) {
+          // Merge data instead of creating duplicate
+          const updateData = {
+            ...contact,
+            // Merge arrays, avoiding duplicates
+            skills: [...new Set([...(existingByName.skills || []), ...(contact.skills || [])])],
+            notes: [...(existingByName.notes || []), ...(contact.notes || [])],
+            debts: [...(existingByName.debts || []), ...(contact.debts || [])],
+            reminders: [...(existingByName.reminders || []), ...(contact.reminders || [])],
+            // Keep existing values if new ones are null
+            phone: contact.phone || existingByName.phone,
+            email: contact.email || existingByName.email,
+            updatedAt: new Date().toISOString()
+          };
+          
+          // Merge payment methods, avoid duplicates by type
+          if (contact.paymentMethods && contact.paymentMethods.length > 0) {
+            const existingTypes = (existingByName.paymentMethods || []).map(p => p.type);
+            const newMethods = contact.paymentMethods.filter(p => !existingTypes.includes(p.type));
+            updateData.paymentMethods = [...(existingByName.paymentMethods || []), ...newMethods];
+          } else {
+            updateData.paymentMethods = existingByName.paymentMethods || [];
+          }
+          
+          await Contact.updateOne(
+            { userId: req.userId, name: contact.name.toLowerCase() }, 
+            { $set: updateData }
+          );
+          console.log(`🔄 Merged into existing contact: ${contact.name}`);
+          mergedCount++;
+        } else {
+          // Truly new contact
+          await Contact.create(contact);
+          console.log(`✨ Created new contact: ${contact.name}`);
+          createdCount++;
+        }
+      }
     }
 
     // Batch update
@@ -271,7 +316,8 @@ app.post('/api/contacts/sync', authenticateToken, async (req, res) => {
       event: 'contacts_synced',
       properties: {
         total: allContacts.length,
-        created: toCreate.length,
+        created: createdCount,
+        merged: mergedCount,
         updated: toUpdate.length
       }
     });
@@ -280,7 +326,8 @@ app.post('/api/contacts/sync', authenticateToken, async (req, res) => {
       contacts: allContacts,
       stats: {
         total: allContacts.length,
-        created: toCreate.length,
+        created: createdCount,
+        merged: mergedCount,
         updated: toUpdate.length
       }
     });
@@ -398,7 +445,8 @@ app.post('/api/contacts/parse-ai', authenticateToken, async (req, res) => {
   console.log('🚀 AI Parse endpoint hit!');
   try {
     const { text } = req.body;
-    console.log('📥 AI Parse request:', text); // logging response
+    console.log('📥 AI Parse request:', text);
+    
     if (!text) {
       return res.status(400).json({ error: 'Text required' });
     }
@@ -439,11 +487,12 @@ RULES:
 5. debts: Money owed. "He owes me $50" = they_owe_me. "I owe him $20" = i_owe_them
 6. reminders: Future events like "lunch next Tuesday"
 7. notes: Other personal info like "met at coffee shop", "old friend"
+8. paymentMethods: Extract payment apps/methods when someone "has", "got", "get", "uses", or "is on" venmo, cashapp, paypal, zelle, etransfer, apple pay, google pay. Format: {"type": "venmo", "username": "their_username"} or just {"type": "venmo"} if no username given
 
 EXAMPLE:
-Input: "Met John at cafe. He's a photographer and designer. Number is 555-1234. He owes me $50. Lunch Friday."
+Input: "Met John at cafe. He's a photographer. His venmo is @johnpay and he got cashapp."
 Output:
-{"contacts":[{"name":"john","skills":["photographer","designer"],"phone":"555-1234","email":null,"debts":[{"amount":50,"direction":"they_owe_me","note":"He owes me $50"}],"reminders":[{"text":"Lunch","date":"Friday"}],"notes":["met at cafe"]}]}
+{"contacts":[{"name":"john","skills":["photographer"],"phone":null,"email":null,"debts":[],"reminders":[],"notes":["met at cafe"],"paymentMethods":[{"type":"venmo","username":"@johnpay"},{"type":"cashapp"}]}]}
 
 Now extract from the text. Return ONLY JSON, no explanation:`
         }]
@@ -451,7 +500,7 @@ Now extract from the text. Return ONLY JSON, no explanation:`
     });
 
     const data = await response.json();
-    console.log('🤖 Claude API response:', JSON.stringify(data, null, 2)); // claude loggin
+    console.log('🤖 Claude API response:', JSON.stringify(data, null, 2));
     
     if (data.content && data.content[0]) {
       let jsonText = data.content[0].text;
@@ -493,6 +542,7 @@ Now extract from the text. Return ONLY JSON, no explanation:`
         ),
         debts: contact.debts || [],
         reminders: contact.reminders || [],
+        paymentMethods: contact.paymentMethods || [],
         metadata: {},
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
@@ -502,7 +552,6 @@ Now extract from the text. Return ONLY JSON, no explanation:`
       res.json(parsed);
     } else {
       console.log('⚠️ No content in Claude response');
-      
       res.json({ contacts: [] });
     }
   } catch (error) {
@@ -511,6 +560,7 @@ Now extract from the text. Return ONLY JSON, no explanation:`
     res.json({ contacts: [] }); // Fallback to empty on error
   }
 });
+
 // =============================================
 // START SERVER
 // =============================================

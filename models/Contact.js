@@ -20,6 +20,10 @@ const ContactSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  paymentMethods: [{
+    type: { type: String },  // venmo, cashapp, paypal, zelle, etransfer
+    username: String
+  }],
   skills: [{
     type: String
   }],
