@@ -636,6 +636,61 @@ Respond naturally as if chatting with the user:`
     res.json({ response: "Search failed. Please try again." });
   }
 });
+// =============================================
+// AI INTENT DETECTION ROUTE
+// =============================================
+
+app.post('/api/detect-intent', authenticateToken, async (req, res) => {
+  try {
+    const { text } = req.body;
+    
+    if (!text) {
+      return res.status(400).json({ error: 'Text required' });
+    }
+
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      return res.json({ intent: 'unknown' });
+    }
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 50,
+        messages: [{
+          role: 'user',
+          content: `Classify this message as either "query" or "add_contact".
+
+- "query" = user is searching/asking about existing contacts (e.g., "who has venmo", "find designers", "who do I owe", "show contacts")
+- "add_contact" = user is adding new contact info (e.g., "John has venmo", "met Sarah she does design", "Mike's number is 555-1234")
+
+Message: "${text}"
+
+Reply with ONLY one word: query OR add_contact`
+        }]
+      })
+    });
+
+    const data = await response.json();
+    
+    if (data.content && data.content[0]) {
+      const intent = data.content[0].text.toLowerCase().trim();
+      console.log(`🧠 Intent for "${text}": ${intent}`);
+      res.json({ intent: intent.includes('query') ? 'query' : 'add_contact' });
+    } else {
+      res.json({ intent: 'unknown' });
+    }
+  } catch (error) {
+    console.error('❌ Intent detection error:', error);
+    res.json({ intent: 'unknown' });
+  }
+});
 
 
 // =============================================
