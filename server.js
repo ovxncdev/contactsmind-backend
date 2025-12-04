@@ -264,34 +264,33 @@ app.post('/api/contacts/sync', authenticateToken, async (req, res) => {
         });
         
         if (existingByName) {
-          // Merge data instead of creating duplicate
+          // Merge payment methods first
+          const existingTypes = (existingByName.paymentMethods || []).map(p => p.type);
+          const newMethods = (contact.paymentMethods || []).filter(p => !existingTypes.includes(p.type));
+          const mergedPaymentMethods = [...(existingByName.paymentMethods || []), ...newMethods];
+          
+          // Build update data WITHOUT spreading contact.paymentMethods
           const updateData = {
-            ...contact,
-            paymentMethods: undefined,
-            // Merge arrays, avoiding duplicates
+            name: contact.name,
+            phone: contact.phone || existingByName.phone,
+            email: contact.email || existingByName.email,
             skills: [...new Set([...(existingByName.skills || []), ...(contact.skills || [])])],
             notes: [...(existingByName.notes || []), ...(contact.notes || [])],
             debts: [...(existingByName.debts || []), ...(contact.debts || [])],
             reminders: [...(existingByName.reminders || []), ...(contact.reminders || [])],
-            // Keep existing values if new ones are null
-            phone: contact.phone || existingByName.phone,
-            email: contact.email || existingByName.email,
+            paymentMethods: mergedPaymentMethods,
+            metadata: contact.metadata || existingByName.metadata || {},
             updatedAt: new Date().toISOString()
           };
-          
-          // Merge payment methods, avoid duplicates by type
-          const existingTypes = (existingByName.paymentMethods || []).map(p => p.type);
-          const newMethods = (contact.paymentMethods || []).filter(p => !existingTypes.includes(p.type));
-          updateData.paymentMethods = [...(existingByName.paymentMethods || []), ...newMethods];
-
-          
-          await Contact.updateOne(
-            { userId: req.userId, name: contact.name.toLowerCase() }, 
-            { $set: updateData }
-          );
-          console.log(`🔄 Merged into existing contact: ${contact.name}`);
-          mergedCount++;
-        } else {
+  
+  await Contact.updateOne(
+    { userId: req.userId, name: contact.name.toLowerCase() }, 
+    { $set: updateData }
+  );
+  console.log(`🔄 Merged into existing contact: ${contact.name}`);
+  console.log(`💳 Payment methods after merge:`, mergedPaymentMethods);
+  mergedCount++;
+} else {
           // Truly new contact
           await Contact.create(contact);
           console.log(`✨ Created new contact: ${contact.name}`);
