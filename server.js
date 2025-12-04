@@ -459,6 +459,26 @@ app.get('/api/admin/stats', authenticateToken, async (req, res) => {
   }
 });
 
+
+// Feedback endpoint
+app.post('/api/feedback', authenticateToken, async (req, res) => {
+  try {
+    const { rating, text, type } = req.body;
+    
+    await Event.create({
+      userId: req.userId,
+      event: 'feedback_submitted',
+      properties: { rating, text, type }
+    });
+    
+    console.log('📝 Feedback received:', { rating, type, text });
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Feedback error:', error);
+    res.status(500).json({ error: 'Failed to save feedback' });
+  }
+});
+
 // =============================================
 // AI PARSING ROUTE
 // =============================================
