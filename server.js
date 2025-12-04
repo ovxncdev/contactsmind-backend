@@ -243,9 +243,10 @@ app.post('/api/contacts/sync', authenticateToken, async (req, res) => {
 
         if (clientUpdated > serverUpdated) {
           // Client is newer, update server
+          const { _id, ...updateData } = clientContact;
           toUpdate.push({
-            filter: { userId: req.userId, id: clientContact.id },
-            update: { ...clientContact, userId: req.userId }
+            filter: { userId: req.userId, _id: clientContact._id },
+            update: { $set: updateData }
           });
         }
       }
@@ -355,7 +356,7 @@ app.delete('/api/contacts/:id', authenticateToken, async (req, res) => {
   try {
     const contact = await Contact.findOneAndDelete({
       userId: req.userId,
-      id: req.params.id
+      _id: req.params.id
     });
 
     if (!contact) {
@@ -373,6 +374,28 @@ app.delete('/api/contacts/:id', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Delete error:', error);
     res.status(500).json({ error: 'Failed to delete contact' });
+  }
+});
+
+// Update contact
+app.put('/api/contacts/:id', authenticateToken, async (req, res) => {
+  try {
+    const { _id, ...updateData } = req.body;
+    
+    const contact = await Contact.findOneAndUpdate(
+      { userId: req.userId, _id: req.params.id },
+      { $set: { ...updateData, updatedAt: new Date().toISOString() } },
+      { new: true }
+    );
+
+    if (!contact) {
+      return res.status(404).json({ error: 'Contact not found' });
+    }
+
+    res.json(contact);
+  } catch (error) {
+    console.error('Update error:', error);
+    res.status(500).json({ error: 'Failed to update contact' });
   }
 });
 
