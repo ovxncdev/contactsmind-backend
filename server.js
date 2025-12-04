@@ -460,15 +460,15 @@ Now extract from the text. Return ONLY JSON, no explanation:`
       const parsed = JSON.parse(jsonText);
       
      // Clean the response (remove markdown if present)
-      let cleanJson = jsonText.trim();
-      if (cleanJson.startsWith('```json')) {
-        cleanJson = cleanJson.replace(/```json\n?/, '').replace(/\n?```$/, '');
-      }
-      if (cleanJson.startsWith('```')) {
-        cleanJson = cleanJson.replace(/```\n?/, '').replace(/\n?```$/, '');
-      }
-      
-      console.log('🧹 Cleaned JSON:', cleanJson);
+    let cleanJson = jsonText.trim();
+
+    // Remove markdown code blocks (```json ... ``` or ``` ... ```)
+    cleanJson = cleanJson.replace(/^```json\s*/i, '');
+    cleanJson = cleanJson.replace(/^```\s*/i, '');
+    cleanJson = cleanJson.replace(/\s*```$/i, '');
+    cleanJson = cleanJson.trim();
+
+    console.log('🧹 Cleaned JSON:', cleanJson);
 
       // Add required fields
       parsed.contacts = parsed.contacts.map((contact, index) => ({
