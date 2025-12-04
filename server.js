@@ -440,6 +440,7 @@ Now extract from the text. Return ONLY JSON, no explanation:`
     
     if (data.content && data.content[0]) {
       const jsonText = data.content[0].text;
+      console.log('🤖 AI RAW RESPONSE:', jsonText);
       // Parse the JSON response
       const parsed = JSON.parse(jsonText);
       
