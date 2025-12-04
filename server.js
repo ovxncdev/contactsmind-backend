@@ -443,9 +443,9 @@ If no contact info found, return: {"contacts": []}`
       const parsed = JSON.parse(jsonText);
       
       // Add required fields
-      parsed.contacts = parsed.contacts.map(contact => ({
+      parsed.contacts = parsed.contacts.map((contact, index) => ({
         ...contact,
-        id: Date.now() + Math.random(),
+        id: `ai-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 9)}`,
         skills: contact.skills || [],
         notes: contact.notes || [],
         debts: contact.debts || [],
