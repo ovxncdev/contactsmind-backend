@@ -279,13 +279,10 @@ app.post('/api/contacts/sync', authenticateToken, async (req, res) => {
           };
           
           // Merge payment methods, avoid duplicates by type
-          if (contact.paymentMethods && contact.paymentMethods.length > 0) {
-            const existingTypes = (existingByName.paymentMethods || []).map(p => p.type);
-            const newMethods = contact.paymentMethods.filter(p => !existingTypes.includes(p.type));
-            updateData.paymentMethods = [...(existingByName.paymentMethods || []), ...newMethods];
-          } else {
-            updateData.paymentMethods = existingByName.paymentMethods || [];
-          }
+          const existingTypes = (existingByName.paymentMethods || []).map(p => p.type);
+          const newMethods = (contact.paymentMethods || []).filter(p => !existingTypes.includes(p.type));
+          updateData.paymentMethods = [...(existingByName.paymentMethods || []), ...newMethods];
+
           
           await Contact.updateOne(
             { userId: req.userId, name: contact.name.toLowerCase() }, 
