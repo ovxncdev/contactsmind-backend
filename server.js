@@ -217,7 +217,7 @@ app.post('/api/contacts/sync', authenticateToken, async (req, res) => {
 
     // Get server contacts
     const serverContacts = await Contact.find({ userId: req.userId });
-    const serverContactMap = new Map(serverContacts.map(c => [c.id, c]));
+    const serverContactMap = new Map(serverContacts.map(c => [c._id?.toString() || c.id, c]));
 
     const toUpdate = [];
     const toCreate = [];
@@ -228,7 +228,7 @@ app.post('/api/contacts/sync', authenticateToken, async (req, res) => {
 
     // Process client contacts
     for (const clientContact of contacts) {
-      const serverContact = serverContactMap.get(clientContact.id);
+      const serverContact = serverContactMap.get(clientContact._id?.toString() || clientContact.id);
 
       if (!serverContact) {
         // New contact from client
