@@ -267,6 +267,8 @@ app.post('/api/contacts/sync', authenticateToken, async (req, res) => {
           // Merge payment methods first
           const existingTypes = (existingByName.paymentMethods || []).map(p => p.type);
           const newMethods = (contact.paymentMethods || []).filter(p => !existingTypes.includes(p.type));
+          console.log(`💳 Existing types:`, existingTypes);
+          console.log(`💳 New methods to add:`, newMethods);
           const mergedPaymentMethods = [...(existingByName.paymentMethods || []), ...newMethods];
           
           // Build update data WITHOUT spreading contact.paymentMethods
@@ -283,21 +285,21 @@ app.post('/api/contacts/sync', authenticateToken, async (req, res) => {
             updatedAt: new Date().toISOString()
           };
   
-  await Contact.updateOne(
-    { userId: req.userId, name: contact.name.toLowerCase() }, 
-    { $set: updateData }
-  );
-  console.log(`🔄 Merged into existing contact: ${contact.name}`);
-  console.log(`💳 Payment methods after merge:`, mergedPaymentMethods);
-  mergedCount++;
-} else {
-          // Truly new contact
-          await Contact.create(contact);
-          console.log(`✨ Created new contact: ${contact.name}`);
-          createdCount++;
-        }
-      }
-    }
+          await Contact.updateOne(
+            { userId: req.userId, name: contact.name.toLowerCase() }, 
+            { $set: updateData }
+          );
+          console.log(`🔄 Merged into existing contact: ${contact.name}`);
+          console.log(`💳 Payment methods after merge:`, mergedPaymentMethods);
+          mergedCount++;
+        } else {
+                  // Truly new contact
+                  await Contact.create(contact);
+                  console.log(`✨ Created new contact: ${contact.name}`);
+                  createdCount++;
+                }
+              }
+            }
 
     // Batch update
     for (const { filter, update } of toUpdate) {
