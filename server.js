@@ -1,4 +1,5 @@
 // server.js - ContactMind Backend API
+//u[]
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -15,7 +16,10 @@ app.use(express.json());
 // MongoDB Connection
 const connectDB = async () => {
   try {
-    await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/contactsmind');
+    await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/contactmind', {
+      useNewUrlParser: true,
+      useUnifiedTopology: true
+    });
     console.log('✅ MongoDB connected');
   } catch (error) {
     console.error('❌ MongoDB connection error:', error);
