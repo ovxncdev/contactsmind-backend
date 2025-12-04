@@ -413,24 +413,55 @@ app.post('/api/contacts/parse-ai', authenticateToken, async (req, res) => {
         max_tokens: 1024,
         messages: [{
           role: 'user',
-          content: `Extract contact information from this text. Return ONLY valid JSON, no other text.
+          content: `You are a contact information extractor. Extract ALL relevant information from this text about people mentioned.
 
 Text: "${text}"
 
-Return format:
+EXTRACTION RULES:
+
+**Name**: The person being talked about (lowercase). NOT the user speaking.
+
+**Skills/Profession**: Any job, skill, or expertise mentioned:
+- "graphic designer" → ["graphic designer"]
+- "does photography and web design" → ["photography", "web design"]
+- "works in real estate" → ["real estate"]
+
+**Phone/Email**: Any contact info for that person.
+
+**Debts** (money between user and contact):
+- "He owes me $50" → {"amount": 50, "direction": "they_owe_me", "note": "..."}
+- "I owe him $20" → {"amount": 20, "direction": "i_owe_them", "note": "..."}
+- "I borrowed $100 from her" → {"amount": 100, "direction": "i_owe_them", "note": "..."}
+- "Lent him $30" → {"amount": 30, "direction": "they_owe_me", "note": "..."}
+
+**Reminders** (future events involving this person):
+- "Meeting next Tuesday" → {"text": "meeting", "date": "next Tuesday"}
+- "We should grab lunch Friday" → {"text": "grab lunch", "date": "Friday"}
+- "Call him tomorrow" → {"text": "call", "date": "tomorrow"}
+- "Her birthday is March 15" → {"text": "birthday", "date": "March 15"}
+- "Our anniversary is June 10" → {"text": "anniversary", "date": "June 10"}
+
+**Notes** (any other useful info about the person):
+- Preferences: "likes coffee", "hates mornings", "vegetarian"
+- Personal: "has 2 kids", "lives in Toronto", "drives a Tesla"
+- Work: "works at Google", "freelancer", "looking for a job"
+- Relationship: "college friend", "met at conference", "neighbor"
+
+Return ONLY valid JSON:
 {
   "contacts": [{
-    "name": "person name (lowercase)",
+    "name": "person name lowercase",
     "skills": ["skill1", "skill2"],
-    "phone": "phone number or null",
+    "phone": "phone or null",
     "email": "email or null",
-    "debts": [{"amount": 20, "direction": "i_owe_them or they_owe_me", "note": "context"}],
-    "reminders": [{"text": "reminder text", "date": "date mentioned"}],
-    "notes": ["any other relevant info"]
+    "debts": [{"amount": number, "direction": "i_owe_them|they_owe_me", "note": "context"}],
+    "reminders": [{"text": "what", "date": "when"}],
+    "notes": ["any other relevant info as strings"]
   }]
 }
 
-If no contact info found, return: {"contacts": []}`
+If no contact found, return: {"contacts": []}
+Return ONLY JSON, no markdown, no explanation.`
         }]
       })
     });
