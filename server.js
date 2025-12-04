@@ -413,55 +413,25 @@ app.post('/api/contacts/parse-ai', authenticateToken, async (req, res) => {
         max_tokens: 1024,
         messages: [{
           role: 'user',
-          content: `You are a contact information extractor. Extract ALL relevant information from this text about people mentioned.
+          content: `Extract contact information from this text and return ONLY valid JSON.
 
 Text: "${text}"
 
-EXTRACTION RULES:
+RULES:
+1. name: The person's name in lowercase (NOT "I" or "me")
+2. skills: Extract as ARRAY of separate skills. "freelance graphic designer and UX consultant" becomes ["graphic designer", "UX consultant"]
+3. phone: Any phone number found (like "415-555-8923")
+4. email: Any email found
+5. debts: Money owed. "He owes me $50" = they_owe_me. "I owe him $20" = i_owe_them
+6. reminders: Future events like "lunch next Tuesday"
+7. notes: Other personal info like "met at coffee shop", "old friend"
 
-**Name**: The person being talked about (lowercase). NOT the user speaking.
+EXAMPLE:
+Input: "Met John at cafe. He's a photographer and designer. Number is 555-1234. He owes me $50. Lunch Friday."
+Output:
+{"contacts":[{"name":"john","skills":["photographer","designer"],"phone":"555-1234","email":null,"debts":[{"amount":50,"direction":"they_owe_me","note":"He owes me $50"}],"reminders":[{"text":"Lunch","date":"Friday"}],"notes":["met at cafe"]}]}
 
-**Skills/Profession**: Any job, skill, or expertise mentioned:
-- "graphic designer" → ["graphic designer"]
-- "does photography and web design" → ["photography", "web design"]
-- "works in real estate" → ["real estate"]
-
-**Phone/Email**: Any contact info for that person.
-
-**Debts** (money between user and contact):
-- "He owes me $50" → {"amount": 50, "direction": "they_owe_me", "note": "..."}
-- "I owe him $20" → {"amount": 20, "direction": "i_owe_them", "note": "..."}
-- "I borrowed $100 from her" → {"amount": 100, "direction": "i_owe_them", "note": "..."}
-- "Lent him $30" → {"amount": 30, "direction": "they_owe_me", "note": "..."}
-
-**Reminders** (future events involving this person):
-- "Meeting next Tuesday" → {"text": "meeting", "date": "next Tuesday"}
-- "We should grab lunch Friday" → {"text": "grab lunch", "date": "Friday"}
-- "Call him tomorrow" → {"text": "call", "date": "tomorrow"}
-- "Her birthday is March 15" → {"text": "birthday", "date": "March 15"}
-- "Our anniversary is June 10" → {"text": "anniversary", "date": "June 10"}
-
-**Notes** (any other useful info about the person):
-- Preferences: "likes coffee", "hates mornings", "vegetarian"
-- Personal: "has 2 kids", "lives in Toronto", "drives a Tesla"
-- Work: "works at Google", "freelancer", "looking for a job"
-- Relationship: "college friend", "met at conference", "neighbor"
-
-Return ONLY valid JSON:
-{
-  "contacts": [{
-    "name": "person name lowercase",
-    "skills": ["skill1", "skill2"],
-    "phone": "phone or null",
-    "email": "email or null",
-    "debts": [{"amount": number, "direction": "i_owe_them|they_owe_me", "note": "context"}],
-    "reminders": [{"text": "what", "date": "when"}],
-    "notes": ["any other relevant info as strings"]
-  }]
-}
-
-If no contact found, return: {"contacts": []}
-Return ONLY JSON, no markdown, no explanation.`
+Now extract from the text. Return ONLY JSON, no explanation:`
         }]
       })
     });
