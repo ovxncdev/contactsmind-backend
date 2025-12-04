@@ -267,6 +267,7 @@ app.post('/api/contacts/sync', authenticateToken, async (req, res) => {
           // Merge data instead of creating duplicate
           const updateData = {
             ...contact,
+            paymentMethods: undefined,
             // Merge arrays, avoiding duplicates
             skills: [...new Set([...(existingByName.skills || []), ...(contact.skills || [])])],
             notes: [...(existingByName.notes || []), ...(contact.notes || [])],
