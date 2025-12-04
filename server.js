@@ -40,25 +40,6 @@ const userSchema = new mongoose.Schema({
 const User = mongoose.model('User', userSchema);
 
 // Contact Schema
-const contactSchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  id: { type: String, required: true }, // Client-generated ID
-  name: { type: String, required: true },
-  skills: [String],
-  phone: String,
-  email: String,
-  notes: [String],
-  createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now }
-});
-
-// Index for fast queries
-contactSchema.index({ userId: 1, name: 1 });
-contactSchema.index({ userId: 1, skills: 1 });
-contactSchema.index({ userId: 1, id: 1 }, { unique: true });
-
-const Contact = mongoose.model('Contact', contactSchema);
-
 // Analytics Event Schema
 const eventSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
