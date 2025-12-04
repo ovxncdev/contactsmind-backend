@@ -454,22 +454,33 @@ Now extract from the text. Return ONLY JSON, no explanation:`
     console.log('🤖 Claude API response:', JSON.stringify(data, null, 2)); // claude loggin
     
     if (data.content && data.content[0]) {
-      const jsonText = data.content[0].text;
-      console.log('🤖 AI RAW RESPONSE:', jsonText); //claude logging
+      let jsonText = data.content[0].text;
+      console.log('🤖 AI RAW RESPONSE:', jsonText);
+      
+      // Clean the response (remove markdown code blocks)
+      jsonText = jsonText.trim();
+      
+      // Remove ```json at start
+      if (jsonText.startsWith('```json')) {
+        jsonText = jsonText.slice(7);
+      } else if (jsonText.startsWith('```')) {
+        jsonText = jsonText.slice(3);
+      }
+      
+      // Remove ``` at end
+      if (jsonText.endsWith('```')) {
+        jsonText = jsonText.slice(0, -3);
+      }
+      
+      // Trim again after removing markdown
+      jsonText = jsonText.trim();
+      
+      console.log('🧹 Cleaned JSON:', jsonText);
+      
       // Parse the JSON response
       const parsed = JSON.parse(jsonText);
+      console.log('✅ Parsed contacts:', parsed.contacts.length);
       
-     // Clean the response (remove markdown if present)
-    let cleanJson = jsonText.trim();
-
-    // Remove markdown code blocks (```json ... ``` or ``` ... ```)
-    cleanJson = cleanJson.replace(/^```json\s*/i, '');
-    cleanJson = cleanJson.replace(/^```\s*/i, '');
-    cleanJson = cleanJson.replace(/\s*```$/i, '');
-    cleanJson = cleanJson.trim();
-
-    console.log('🧹 Cleaned JSON:', cleanJson);
-
       // Add required fields
       parsed.contacts = parsed.contacts.map((contact, index) => ({
         ...contact,
@@ -482,9 +493,12 @@ Now extract from the text. Return ONLY JSON, no explanation:`
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       }));
+      
       console.log('✅ Returning contacts:', parsed.contacts);
       res.json(parsed);
     } else {
+      console.log('⚠️ No content in Claude response');
+      
       res.json({ contacts: [] });
     }
   } catch (error) {
