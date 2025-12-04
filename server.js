@@ -408,6 +408,82 @@ app.get('/api/admin/stats', authenticateToken, async (req, res) => {
 });
 
 // =============================================
+// AI PARSING ROUTE
+// =============================================
+
+app.post('/api/contacts/parse-ai', authenticateToken, async (req, res) => {
+  try {
+    const { text } = req.body;
+    
+    if (!text) {
+      return res.status(400).json({ error: 'Text required' });
+    }
+
+    // Call Claude API
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1024,
+        messages: [{
+          role: 'user',
+          content: `Extract contact information from this text. Return ONLY valid JSON, no other text.
+
+Text: "${text}"
+
+Return format:
+{
+  "contacts": [{
+    "name": "person name (lowercase)",
+    "skills": ["skill1", "skill2"],
+    "phone": "phone number or null",
+    "email": "email or null",
+    "debts": [{"amount": 20, "direction": "i_owe_them or they_owe_me", "note": "context"}],
+    "reminders": [{"text": "reminder text", "date": "date mentioned"}],
+    "notes": ["any other relevant info"]
+  }]
+}
+
+If no contact info found, return: {"contacts": []}`
+        }]
+      })
+    });
+
+    const data = await response.json();
+    
+    if (data.content && data.content[0]) {
+      const jsonText = data.content[0].text;
+      // Parse the JSON response
+      const parsed = JSON.parse(jsonText);
+      
+      // Add required fields
+      parsed.contacts = parsed.contacts.map(contact => ({
+        ...contact,
+        id: Date.now() + Math.random(),
+        skills: contact.skills || [],
+        notes: contact.notes || [],
+        debts: contact.debts || [],
+        reminders: contact.reminders || [],
+        metadata: {},
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }));
+      
+      res.json(parsed);
+    } else {
+      res.json({ contacts: [] });
+    }
+  } catch (error) {
+    console.error('AI parsing error:', error);
+    res.json({ contacts: [] }); // Fallback to empty on error
+  }
+});
+// =============================================
 // START SERVER
 // =============================================
 
