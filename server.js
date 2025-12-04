@@ -395,7 +395,7 @@ app.get('/api/admin/stats', authenticateToken, async (req, res) => {
 app.post('/api/contacts/parse-ai', authenticateToken, async (req, res) => {
   try {
     const { text } = req.body;
-    
+    console.log('📥 AI Parse request:', text); // logging response
     if (!text) {
       return res.status(400).json({ error: 'Text required' });
     }
@@ -437,10 +437,11 @@ Now extract from the text. Return ONLY JSON, no explanation:`
     });
 
     const data = await response.json();
+    console.log('🤖 Claude API response:', JSON.stringify(data, null, 2)); // claude loggin
     
     if (data.content && data.content[0]) {
       const jsonText = data.content[0].text;
-      console.log('🤖 AI RAW RESPONSE:', jsonText);
+      console.log('🤖 AI RAW RESPONSE:', jsonText); //claude logging
       // Parse the JSON response
       const parsed = JSON.parse(jsonText);
       
