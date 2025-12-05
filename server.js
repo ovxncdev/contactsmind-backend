@@ -7,6 +7,10 @@ const bcrypt = require('bcrypt');
 require('dotenv').config();
 const Contact = require('./models/Contact');
 const app = express();
+const { OAuth2Client } = require('google-auth-library');
+
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
 
 console.log('🔍 All ANTHROPIC vars:', Object.keys(process.env).filter(k => k.toUpperCase().includes('ANTHROPIC')));
 console.log('🔍 Full env var names:', Object.keys(process.env).join(', '));
@@ -202,6 +206,61 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
   }
 });
 
+//Google routes
+app.post('/api/auth/google', async (req, res) => {
+  try {
+    const { credential } = req.body;
+    
+    // Verify the Google token
+    const ticket = await googleClient.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID
+    });
+    
+    const payload = ticket.getPayload();
+    const { sub: googleId, email, name, picture } = payload;
+    
+    // Find or create user
+    let user = await User.findOne({ $or: [{ googleId }, { email }] });
+    
+    if (!user) {
+      // Create new user
+      user = new User({
+        name,
+        email,
+        googleId,
+        avatar: picture,
+        password: null // Google users don't have passwords
+      });
+      await user.save();
+    } else if (!user.googleId) {
+      // Link Google to existing account
+      user.googleId = googleId;
+      user.avatar = picture;
+      await user.save();
+    }
+    
+    // Generate JWT
+    const token = jwt.sign(
+      { userId: user._id, email: user.email },
+      process.env.JWT_SECRET,
+      { expiresIn: '30d' }
+    );
+    
+    res.json({
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        avatar: user.avatar
+      }
+    });
+  } catch (error) {
+    console.error('Google auth error:', error);
+    res.status(401).json({ error: 'Google authentication failed' });
+  }
+});
 // =============================================
 // CONTACT ROUTES
 // =============================================
