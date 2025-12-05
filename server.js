@@ -245,7 +245,15 @@ const userSchema = new mongoose.Schema({
   lastLogin: Date,
   failedLoginAttempts: { type: Number, default: 0 },
   lockUntil: Date,
-  plan: { type: String, default: 'free', enum: ['free', 'pro', 'business'] }
+  plan: { type: String, default: 'free', enum: ['free', 'pro', 'business'] },
+  googleCalendarTokens: {
+    access_token: String,
+    refresh_token: String,
+    scope: String,
+    token_type: String,
+    expiry_date: Number
+  }
+
 });
 
 userSchema.methods.isLocked = function() {
@@ -646,6 +654,186 @@ app.post('/api/events', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Event tracking error:', error.message);
     res.status(500).json({ error: 'Failed to track event' });
+  }
+});
+
+// Google Calendar OAuth
+const { google } = require('googleapis');
+
+const calendarOAuth2Client = new google.auth.OAuth2(
+  process.env.GOOGLE_CLIENT_ID,
+  process.env.GOOGLE_CLIENT_SECRET,
+  process.env.GOOGLE_CALENDAR_REDIRECT_URI || `${process.env.FRONTEND_URL}/calendar-callback.html`
+);
+
+// Get Google Calendar auth URL
+app.get('/api/calendar/auth-url', authenticateToken, (req, res) => {
+  const scopes = ['https://www.googleapis.com/auth/calendar.events'];
+  
+  const authUrl = calendarOAuth2Client.generateAuthUrl({
+    access_type: 'offline',
+    scope: scopes,
+    state: req.user.userId,
+    prompt: 'consent'
+  });
+  
+  res.json({ authUrl });
+});
+
+// Exchange code for tokens
+app.post('/api/calendar/callback', authenticateToken, async (req, res) => {
+  try {
+    const { code } = req.body;
+    const { tokens } = await calendarOAuth2Client.getToken(code);
+    
+    // Save tokens to user
+    await User.findByIdAndUpdate(req.user.userId, {
+      googleCalendarTokens: tokens
+    });
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Calendar auth error:', error);
+    res.status(500).json({ error: 'Failed to connect calendar' });
+  }
+});
+
+// Check if calendar is connected
+app.get('/api/calendar/status', authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId);
+    const connected = !!(user?.googleCalendarTokens?.access_token);
+    res.json({ connected });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to check calendar status' });
+  }
+});
+
+// Disconnect calendar
+app.post('/api/calendar/disconnect', authenticateToken, async (req, res) => {
+  try {
+    await User.findByIdAndUpdate(req.user.userId, {
+      $unset: { googleCalendarTokens: 1 }
+    });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to disconnect calendar' });
+  }
+});
+
+// Create calendar event from reminder
+app.post('/api/calendar/create-event', authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId);
+    
+    if (!user?.googleCalendarTokens) {
+      return res.status(401).json({ error: 'Calendar not connected' });
+    }
+    
+    calendarOAuth2Client.setCredentials(user.googleCalendarTokens);
+    
+    // Refresh token if needed
+    if (user.googleCalendarTokens.expiry_date < Date.now()) {
+      const { credentials } = await calendarOAuth2Client.refreshAccessToken();
+      await User.findByIdAndUpdate(req.user.userId, {
+        googleCalendarTokens: credentials
+      });
+      calendarOAuth2Client.setCredentials(credentials);
+    }
+    
+    const calendar = google.calendar({ version: 'v3', auth: calendarOAuth2Client });
+    
+    const { title, description, date, time, contactName } = req.body;
+    
+    // Parse date and time
+    const startDateTime = new Date(`${date}T${time || '09:00'}`);
+    const endDateTime = new Date(startDateTime.getTime() + 30 * 60 * 1000); // 30 min event
+    
+    const event = {
+      summary: `${title} - ${contactName}`,
+      description: description || `Reminder for ${contactName} from ContactsMind`,
+      start: {
+        dateTime: startDateTime.toISOString(),
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+      },
+      end: {
+        dateTime: endDateTime.toISOString(),
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+      },
+      reminders: {
+        useDefault: false,
+        overrides: [
+          { method: 'popup', minutes: 30 },
+          { method: 'popup', minutes: 10 }
+        ]
+      }
+    };
+    
+    const result = await calendar.events.insert({
+      calendarId: 'primary',
+      resource: event
+    });
+    
+    res.json({ 
+      success: true, 
+      eventId: result.data.id,
+      eventLink: result.data.htmlLink
+    });
+  } catch (error) {
+    console.error('Create event error:', error);
+    res.status(500).json({ error: 'Failed to create event' });
+  }
+});
+
+// Sync all reminders to calendar
+app.post('/api/calendar/sync-reminders', authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId);
+    
+    if (!user?.googleCalendarTokens) {
+      return res.status(401).json({ error: 'Calendar not connected' });
+    }
+    
+    const contacts = await Contact.find({ userId: req.user.userId });
+    let synced = 0;
+    
+    for (const contact of contacts) {
+      for (const reminder of (contact.reminders || [])) {
+        if (!reminder.calendarEventId) {
+          try {
+            // Create event for each reminder
+            const response = await fetch(`${process.env.API_URL || 'http://localhost:3001'}/api/calendar/create-event`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': req.headers.authorization
+              },
+              body: JSON.stringify({
+                title: reminder.title,
+                description: reminder.notes,
+                date: reminder.date,
+                time: reminder.time,
+                contactName: contact.name
+              })
+            });
+            
+            if (response.ok) {
+              const data = await response.json();
+              reminder.calendarEventId = data.eventId;
+              synced++;
+            }
+          } catch (e) {
+            console.error('Sync reminder error:', e);
+          }
+        }
+      }
+      await contact.save();
+    }
+    
+    res.json({ success: true, synced });
+  } catch (error) {
+    console.error('Sync reminders error:', error);
+    res.status(500).json({ error: 'Failed to sync reminders' });
   }
 });
 
